@@ -1,0 +1,8 @@
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: todo-api
+    static_configs:
+      # Le nom du service, pas une adresse IP : les deux conteneurs partagent le reseau de la stack.
+      - targets: ['todo-api:3000']

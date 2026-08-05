@@ -128,12 +128,12 @@ jobs:
           ssh-keyscan -p "${{ secrets.DEPLOY_PORT }}" -H "${{ secrets.DEPLOY_HOST }}" \
             >> ~/.ssh/known_hosts
 
-      - name: Envoyer compose.yml sur la machine cible
+      - name: Envoyer la configuration sur la machine cible
         run: |
           ssh -p "${{ secrets.DEPLOY_PORT }}" \
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" 'mkdir -p /srv/todo'
-          scp -P "${{ secrets.DEPLOY_PORT }}" compose.yml \
-            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/srv/todo/compose.yml"
+          scp -P "${{ secrets.DEPLOY_PORT }}" -r compose.yml prometheus.yml grafana \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/srv/todo/"
 
       - name: Déployer la version de ce commit
         run: |

@@ -1,0 +1,10 @@
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    # Depuis le conteneur Grafana, localhost designerait Grafana lui-meme.
+    url: http://prometheus:9090
+    isDefault: true

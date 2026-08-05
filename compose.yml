@@ -33,5 +33,36 @@ services:
       timeout: 3s
       retries: 10
 
+  prometheus:
+    container_name: prometheus
+    image: prom/prometheus:v3.13.2
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+
+  grafana:
+    container_name: grafana
+    image: grafana/grafana:12.4.7
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      # Lecture sans mot de passe : en phase 10 le pilote doit ouvrir le tableau de bord
+      # sans avoir a demander d'identifiants a la personne en panne.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/etc/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+
 volumes:
   todo-db-data:
+  prometheus-data:
+  grafana-data:
