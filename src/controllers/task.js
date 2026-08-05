@@ -1,5 +1,6 @@
 import Task from '../models/task.js';
 import * as taches from '../repositories/task.js';
+import { tachesCreees } from '../metrics.js';
 
 function httpError(status, message) {
   const err = new Error(message);
@@ -38,6 +39,7 @@ export async function createTask(req, res, next) {
   }
 
   const task = await taches.create(description.trim(), status?.trim());
+  tachesCreees.inc();
   res.status(201).json(task);
 }
 
