@@ -3,13 +3,12 @@ import assert from 'node:assert/strict';
 import { once } from 'node:events';
 
 import app from '../../src/app.js';
-import { close, migrate, query } from '../../src/db.js';
+import { close, query } from '../../src/db.js';
 
 let server;
 let baseUrl;
 
 before(async () => {
-  await migrate();
   await query('TRUNCATE TABLE tasks');
   server = app.listen(0);
   await once(server, 'listening');
