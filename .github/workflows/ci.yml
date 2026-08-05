@@ -48,3 +48,19 @@ jobs:
           file: ./Dockerfile
           push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/todo-api:${{ github.sha }}
+
+  deploy:
+    needs: [build]
+    # Seul job à tourner chez moi : le runner GitHub est dans un datacenter et ne peut pas
+    # joindre la machine cible derrière ma box.
+    runs-on: self-hosted
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Vérifier que le job atteint la machine cible
+        run: |
+          echo "hôte d'exécution : $(hostname)"
+          docker ps --filter name=vm-prod --format 'machine cible : {{.Names}} — {{.Status}}' \
+            | grep vm-prod
