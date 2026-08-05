@@ -3,25 +3,27 @@ import assert from 'node:assert/strict';
 import { once } from 'node:events';
 
 import app from '../../src/app.js';
+import { close, migrate, query } from '../../src/db.js';
 
 let server;
 let baseUrl;
 
 before(async () => {
+  await migrate();
   // Port 0 : le système choisit un port libre, deux exécutions ne peuvent pas se marcher dessus.
   server = app.listen(0);
   await once(server, 'listening');
   baseUrl = `http://127.0.0.1:${server.address().port}`;
 });
 
-after(() => new Promise((resolve) => server.close(resolve)));
-
-// Le stockage est un Map partagé par tout le processus : sans ce nettoyage, l'ordre des tests
-// changerait leur résultat.
-beforeEach(async () => {
-  const { body: taches } = await api('GET', '/api/tasks');
-  await Promise.all(taches.map((t) => api('DELETE', `/api/tasks/${t.id}`)));
+after(async () => {
+  await new Promise((resolve) => server.close(resolve));
+  await close();
 });
+
+// Chaque test repart d'une base vide : sans ça, une deuxième exécution de la suite échouerait
+// sur les tâches laissées par la première.
+beforeEach(() => query('TRUNCATE TABLE tasks'));
 
 async function api(method, path, body) {
   const res = await fetch(`${baseUrl}${path}`, {
@@ -91,6 +93,19 @@ describe('POST /api/tasks', () => {
     assert.equal(status, 400);
   });
 
+  it('refuse une description demesuree avec un 400', async () => {
+    const { status, body } = await creerTache('x'.repeat(501));
+
+    assert.equal(status, 400);
+    assert.match(body.error, /500/);
+  });
+
+  it('accepte une description a la limite exacte', async () => {
+    const { status } = await creerTache('x'.repeat(500));
+
+    assert.equal(status, 201);
+  });
+
   it('refuse un statut hors de la liste avec un 400', async () => {
     const { status, body } = await creerTache('Tâche', 'terminé');
 
@@ -102,6 +117,27 @@ describe('POST /api/tasks', () => {
     const { status } = await api('POST', '/api/tasks');
 
     assert.equal(status, 400);
+  });
+});
+
+describe('Persistance', () => {
+  it('écrit réellement la ligne dans Postgres', async () => {
+    const { body } = await creerTache('stockee en base');
+
+    const { rows } = await query('SELECT description, status FROM tasks WHERE id = $1', [body.id]);
+
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].description, 'stockee en base');
+    assert.equal(rows[0].status, 'pending');
+  });
+
+  it('supprime réellement la ligne', async () => {
+    const { body } = await creerTache('a supprimer');
+    await api('DELETE', `/api/tasks/${body.id}`);
+
+    const { rows } = await query('SELECT 1 FROM tasks WHERE id = $1', [body.id]);
+
+    assert.equal(rows.length, 0);
   });
 });
 

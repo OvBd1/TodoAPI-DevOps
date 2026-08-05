@@ -21,11 +21,52 @@ jobs:
       - name: Installation des dépendances
         run: npm ci
 
-      - name: Tests
-        run: npm test
+      - name: Tests unitaires
+        run: npm run test:unit
+
+  integration:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: todo_test
+          POSTGRES_USER: todo
+          POSTGRES_PASSWORD: todo
+        ports:
+          - 5432:5432
+        # Sans ce healthcheck, le job demarre avant que PostgreSQL accepte les connexions
+        # et les tests echouent au hasard.
+        options: >-
+          --health-cmd "pg_isready -U todo -d todo_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Node.js 24.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+          cache: npm
+
+      - name: Installation des dépendances
+        run: npm ci
+
+      - name: Tests d'intégration sur une vraie base
+        run: npm run test:integration
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_NAME: todo_test
+          DB_USER: todo
+          DB_PASSWORD: todo
 
   build:
-    needs: test
+    needs: [test, integration]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 

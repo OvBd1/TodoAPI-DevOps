@@ -36,6 +36,38 @@ describe('Task — construction', () => {
   });
 });
 
+describe('Task — fromRow()', () => {
+  const ligne = {
+    id: '11111111-2222-4333-8444-555555555555',
+    description: 'venue de la base',
+    status: 'done',
+    created_at: new Date('2020-01-01T00:00:00Z'),
+    updated_at: new Date('2020-01-02T00:00:00Z'),
+  };
+
+  it('reprend l\'identifiant de la base au lieu d\'en générer un', () => {
+    assert.equal(Task.fromRow(ligne).id, ligne.id);
+  });
+
+  it('traduit les colonnes snake_case en champs camelCase', () => {
+    const task = Task.fromRow(ligne);
+
+    assert.equal(task.createdAt, ligne.created_at);
+    assert.equal(task.updatedAt, ligne.updated_at);
+    assert.equal(task.description, 'venue de la base');
+    assert.equal(task.status, 'done');
+  });
+
+  it('rend un objet qui sait encore se mettre à jour', () => {
+    const task = Task.fromRow(ligne);
+
+    task.update({ status: 'pending' });
+
+    assert.equal(task.status, 'pending');
+    assert.ok(task.updatedAt > ligne.updated_at);
+  });
+});
+
 describe('Task — statuts autorisés', () => {
   it('expose exactement les trois statuts du domaine', () => {
     assert.deepEqual(Task.STATUSES, ['pending', 'in-progress', 'done']);
