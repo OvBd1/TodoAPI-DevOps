@@ -65,11 +65,27 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
 
+      - name: Vérifier que les secrets de déploiement sont présents
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          manquants=""
+          [ -z "$DEPLOY_HOST" ] && manquants="$manquants DEPLOY_HOST"
+          [ -z "$DEPLOY_PORT" ] && manquants="$manquants DEPLOY_PORT"
+          [ -z "$DEPLOY_USER" ] && manquants="$manquants DEPLOY_USER"
+          if [ -n "$manquants" ]; then
+            echo "::error::Secret(s) absent(s) ou mal orthographie(s) :$manquants — verifier Settings > Secrets and variables > Actions"
+            exit 1
+          fi
+          echo "les trois secrets de connexion sont renseignes"
+
       - name: Faire confiance à la machine cible
         run: |
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           ssh-keyscan -p "${{ secrets.DEPLOY_PORT }}" -H "${{ secrets.DEPLOY_HOST }}" \
-            >> ~/.ssh/known_hosts 2>/dev/null
+            >> ~/.ssh/known_hosts
 
       - name: Envoyer compose.yml sur la machine cible
         run: |
