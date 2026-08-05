@@ -59,8 +59,42 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Vérifier que le job atteint la machine cible
+      # L'agent garde la clé en mémoire : rien n'est écrit sur le disque du runner.
+      - name: Charger la clé de déploiement dans l'agent SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+
+      - name: Faire confiance à la machine cible
         run: |
-          echo "hôte d'exécution : $(hostname)"
-          docker ps --filter name=vm-prod --format 'machine cible : {{.Names}} — {{.Status}}' \
-            | grep vm-prod
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -p "${{ secrets.DEPLOY_PORT }}" -H "${{ secrets.DEPLOY_HOST }}" \
+            >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Envoyer compose.yml sur la machine cible
+        run: |
+          ssh -p "${{ secrets.DEPLOY_PORT }}" \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" 'mkdir -p /srv/todo'
+          scp -P "${{ secrets.DEPLOY_PORT }}" compose.yml \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/srv/todo/compose.yml"
+
+      - name: Déployer la version de ce commit
+        run: |
+          ssh -p "${{ secrets.DEPLOY_PORT }}" \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "cd /srv/todo && TAG=${{ github.sha }} docker compose up -d --remove-orphans"
+
+      - name: Vérifier que l'API répond
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS "http://${{ secrets.DEPLOY_HOST }}:3000/health"; then
+              echo "" && echo "API en ligne apres ${i} tentative(s)"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "L'API ne repond pas sur /health apres 60 s"
+          ssh -p "${{ secrets.DEPLOY_PORT }}" \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            'docker compose -f /srv/todo/compose.yml ps; docker logs --tail 30 todo-api'
+          exit 1

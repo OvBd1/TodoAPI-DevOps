@@ -1,0 +1,37 @@
+services:
+  todo-api:
+    container_name: todo-api
+    # TAG vient de l'environnement, jamais du fichier : c'est ce qui rend le retour arrière
+    # possible sans rebuild. Non défini, le déploiement échoue au lieu de partir au hasard.
+    image: ovbd/todo-api:${TAG:?TAG est requis (le sha du commit a deployer)}
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      DB_HOST: todo-db
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB}
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+    depends_on:
+      todo-db:
+        condition: service_healthy
+
+  todo-db:
+    container_name: todo-db
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - todo-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  todo-db-data:
