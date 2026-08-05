@@ -20,6 +20,8 @@ app.use(errorHandler);
 
 if (import.meta.main) {
   const PORT = process.env.PORT || 3000;
+  const { migrate } = await import('./db.js');
+  await migrate();
   app.listen(PORT, () => console.log(`API à l'écoute sur le port ${PORT}`));
 }
 
