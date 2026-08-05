@@ -102,3 +102,59 @@ script — ce qui rend possible son déclenchement depuis la pipeline.
 
 Un déploiement normal (push → API qui répond) prend **59 s**. Au-delà de 2 minutes, il y a un
 problème.
+
+---
+
+## Phase 8 — Prometheus, Grafana et les 4 golden signals
+
+### Le tableau de relevés
+
+| Moment | `up` | Requêtes/s | Taux d'erreur (5xx) | p95 |
+|---|---|---|---|---|
+| Au repos, avant la boucle de charge | 1 | 0,20 | 0 % | 21 ms |
+| Pendant la boucle de charge | 1 | 12,64 | 0 % | 8 ms |
+| Pendant l'incident (base coupée) | 1 | 0,80 | **14,2 %** | **5 s** |
+
+Les 0,20 req/s au repos ne sont pas du bruit : ce sont exactement les collectes de Prometheus,
+toutes les 5 secondes. Aucun utilisateur, et pourtant le trafic n'est jamais nul.
+
+Le p95 **baisse** sous la charge (21 ms → 8 ms) : au repos les seules requêtes mesurées sont les
+collectes de `/metrics`, plus lourdes que `/api/tasks`. Une moyenne calculée sur trois requêtes
+ne veut rien dire — c'est le volume qui rend la mesure honnête.
+
+Pendant l'incident, le taux d'erreur reste à 14 % et non à 100 % : `/health` et `/metrics`
+continuent de répondre normalement. Seules les routes qui touchent la base échouent.
+
+### Les deux signatures à savoir distinguer
+
+| | API arrêtée | Base arrêtée |
+|---|---|---|
+| `up` | **0** (en 7 s) | **1** |
+| `/health` | aucune réponse | 200 |
+| `/api/tasks` | aucune réponse | **500 après 5 s** |
+| p95 | plus de données | **5 s** |
+| Taux d'erreur | plus de données | 14 % |
+
+`up = 0` veut dire « la cible ne répond plus ». `up = 1` avec des 5xx veut dire « la cible répond,
+mais ce qu'elle sert est cassé ». Confondre les deux, c'est chercher la panne au mauvais endroit.
+
+### Checkpoint qualité
+
+- `docker stop todo-api` → `up` tombe à 0 en **7 s** (exigé : moins de 15 s)
+- source de données et tableau de bord provisionnés depuis le dépôt, aucun clic dans Grafana
+- Prometheus atteint sa cible par `todo-api:3000`, le nom du service — jamais une adresse IP
+
+### Le bug que ce relevé a révélé
+
+Au premier essai, couper **la base** faisait tomber `up` à **0** : même signature qu'une API
+arrêtée, donc deux incidents indiscernables. Deux causes cumulées :
+
+1. l'arrêt de PostgreSQL émet un événement `error` sur un client inactif du pool ; sans écouteur,
+   Node tue le processus ;
+2. la migration au démarrage levait une exception non rattrapée → le conteneur redémarrait sans
+   fin (**6 redémarrages** observés).
+
+Corrigé, avec un test d'intégration qui verrouille le comportement : base injoignable →
+`/health` 200, `/metrics` 200, `/api/tasks` 500, et le processus reste debout.
+
+**Sans le relevé chiffré, ce bug serait passé inaperçu jusqu'à la passation.**
