@@ -1,1 +1,4 @@
 node_modules
+
+# Clé privée de déploiement (deploy_key.pub reste versionnée).
+deploy_key

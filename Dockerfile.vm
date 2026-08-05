@@ -1,0 +1,17 @@
+# Maquette de la machine de production : Docker-in-Docker + serveur SSH.
+FROM docker:28-dind
+
+RUN apk add --no-cache openssh-server && ssh-keygen -A
+
+RUN mkdir -p /root/.ssh && chmod 700 /root/.ssh
+COPY deploy_key.pub /root/.ssh/authorized_keys
+RUN chmod 600 /root/.ssh/authorized_keys
+
+RUN printf 'PermitRootLogin prohibit-password\nPasswordAuthentication no\n' \
+    >> /etc/ssh/sshd_config
+
+# sshd avant dockerd : dockerd-entrypoint.sh ne rend jamais la main.
+RUN printf '#!/bin/sh\n/usr/sbin/sshd\nexec dockerd-entrypoint.sh "$@"\n' > /start.sh \
+    && chmod +x /start.sh
+
+ENTRYPOINT ["/start.sh"]
