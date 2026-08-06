@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: todo-api
+  namespace: todo
+  labels:
+    app: todo-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: todo-api
+  template:
+    metadata:
+      labels:
+        app: todo-api
+    spec:
+      containers:
+        - name: todo-api
+          # Le sha du commit, jamais latest : c'est ce qui rend le retour arrière possible.
+          image: ovbd/todo-api:aab934acd7d9a1282d80509cd43199292350817b
+          ports:
+            - containerPort: 3000
