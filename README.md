@@ -273,6 +273,37 @@ La cible n'est plus `vm-prod` mais `todo-cluster`, un cluster k3d d'un seul node
 limites nommées la veille — coupure à chaque déploiement, personne pour relever l'app à 3 h du
 matin, une seule copie pour encaisser le trafic — sont mesurées ci-dessous, une par une.
 
+## Phase 5 — Un push, et le cluster se met à jour
+
+Le job `deploy` ne parle plus en SSH mais en `kubectl`. Le runner et le cluster partagent la
+machine : il lit le même `~/.kube/config` que moi, et **aucun secret GitHub n'a été ajouté** —
+`DEPLOY_SSH_KEY`, `DEPLOY_HOST`, `DEPLOY_PORT` et `DEPLOY_USER` ne servent plus à rien.
+
+Run `31112640317`, sur le commit `4513ad3` :
+
+| Job | Durée |
+|---|---|
+| `test` | 13 s |
+| `integration` | 27 s |
+| `build` | 28 s |
+| `deploy` | **41 s** |
+| **Push → API à jour** | **1 min 47 s** |
+
+Vérification faite après coup, les deux commandes de l'étape 6 de la procédure :
+
+```
+image deployee : ovbd/todo-api:4513ad3f2e319465ffef3cabc417dc5df98c160a
+HEAD du depot  : ovbd/todo-api:4513ad3f2e319465ffef3cabc417dc5df98c160a
+```
+
+Trois pods neufs, `/api/tasks` à 200, sans qu'une seule commande soit tapée à la main.
+
+Le garde-fou qui compte est l'étape « Attendre la convergence du rollout » : elle fait échouer le
+job si `kubectl rollout status` n'aboutit pas dans les 120 s. Éprouvé à part, avec un tag qui
+n'existe pas : `rollout status` rend la main au bout du délai avec le code **1**, le job devient
+rouge, **et la production ne bouge pas** — les trois anciens pods continuent de servir. La
+pipeline refuse de déclarer un succès qu'elle n'a pas, sans casser quoi que ce soit pour autant.
+
 ## Phase 6 — Trois copies, et la preuve que le trafic se répartit
 
 `charge.sh 30` via l'Ingress, puis `/metrics` interrogé **pod par pod**, en contournant le Service
@@ -439,7 +470,13 @@ Deux défauts que seule cette exécution a montrés, corrigés dans le fichier :
 | Rien ne relève l'app à 3 h du matin | **fausse pour deux pannes sur cinq** — pod supprimé et processus mort reviennent seuls en ~30 s. Les trois autres attendent toujours une main humaine |
 | Grossir demande une intervention manuelle | **fausse** — `replicas: 3` dans un fichier, et le Service retrouve les pods par leur étiquette sans qu'on y touche |
 
-Une limite nouvelle a pris leur place : **le cluster ne surveille plus rien de ce qu'il ne voit
-pas**. Prometheus et Grafana scrapent encore une adresse fixe qui n'existe plus, la panne 4 ne
-déclenche aucune alerte, et le seul contrôle qui engage quelque chose reste un `curl` sur
-`/api/tasks` tapé à la main.
+Une limite nouvelle a pris leur place : **plus rien ne surveille la production**. Prometheus et
+Grafana vivaient dans `vm-prod`, arrêtée pour libérer le port du cluster, et ils scrutaient de
+toute façon une adresse fixe qui n'existe plus. La panne 4 — la seule qui coupe vraiment le
+service — ne déclenche donc aucune alerte, et le seul contrôle qui engage quelque chose reste un
+`curl` sur `/api/tasks` tapé à la main.
+
+Le sujet range le rebranchement de Prometheus sur le cluster dans les « pour les curieux », et
+c'est la première chose que je ferais avec une demi-heure de plus : `kube-state-metrics` aurait vu
+les trois pods `Running` d'une panne 4, mais c'est la découverte de cibles par étiquette qui
+manque d'abord.

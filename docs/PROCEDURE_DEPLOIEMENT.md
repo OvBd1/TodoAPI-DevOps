@@ -47,10 +47,11 @@ Si elle affiche autre chose, ou une erreur de connexion, allez au
 diagnostiquer quoi que ce soit** : un `kubectl` pointé sur un autre cluster répond sans erreur et
 affiche des objets qui n'ont rien à voir.
 
-> Le Grafana et le Prometheus du Jour 3 tournent encore dans `vm-prod`, mais **ils ne surveillent
-> plus la production** : ils scrapent une adresse fixe qui n'existe plus dans le cluster. Un
-> panneau au vert ne prouve rien aujourd'hui. Le diagnostic passe par `kubectl`, pas par le
-> tableau de bord.
+> **Il n'y a plus de tableau de bord.** Le Grafana et le Prometheus du Jour 3 vivaient dans
+> `vm-prod`, arrêtée pour libérer le port 8080 du cluster, et ils scrutaient de toute façon une
+> adresse fixe qui n'existe plus. Tout le diagnostic de ce document passe par `kubectl`. Si
+> quelqu'un relance `vm-prod`, ses panneaux afficheront l'état d'une production morte : n'y
+> croyez pas.
 
 ---
 
