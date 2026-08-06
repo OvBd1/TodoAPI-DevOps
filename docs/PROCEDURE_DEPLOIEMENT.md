@@ -230,8 +230,13 @@ vm 'cd /srv/todo && TAG=COLLEZ_ICI_L_IDENTIFIANT docker compose up -d'
 ```
 
 **Vérification :** la commande affiche `Container todo-api Started`.
-Si elle affiche `manifest unknown`, l'identifiant est faux : reprenez l'étape 1. La production
-n'a pas bougé, l'ancienne version tourne toujours.
+
+Si elle affiche `manifest unknown`, l'identifiant est faux : reprenez l'étape 1. **La production
+n'a pas bougé** — Compose n'arrête l'ancien conteneur qu'une fois la nouvelle image téléchargée.
+
+> L'erreur la plus fréquente est de coller le sha **court** (7 caractères, celui qu'affiche
+> `git log --oneline`). Les images sont taguées avec le sha **complet** (40 caractères), celui que
+> donne la commande de l'étape 1. Un sha court produit toujours `manifest unknown`.
 
 **Étape 3 — Confirmer le rétablissement**
 

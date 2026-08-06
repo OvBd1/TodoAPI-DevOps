@@ -158,3 +158,61 @@ Corrigé, avec un test d'intégration qui verrouille le comportement : base injo
 `/health` 200, `/metrics` 200, `/api/tasks` 500, et le processus reste debout.
 
 **Sans le relevé chiffré, ce bug serait passé inaperçu jusqu'à la passation.**
+
+---
+
+## Phase 9 — La procédure de déploiement
+
+`docs/PROCEDURE_DEPLOIEMENT.md`. Éprouvée non pas en la relisant, mais en **rejouant chacun de ses
+remèdes sur la vraie machine cible**, commande par commande, telles qu'elles sont écrites.
+
+### Les remèdes, chronométrés
+
+| Panne posée | Remède de la procédure | Rétabli en |
+|---|---|---|
+| API arrêtée (§7.4) | `docker compose up -d` | 6 s |
+| Base arrêtée (§7.5) | `docker compose up -d todo-db` | 6 s |
+| Port 3000 occupé par un orphelin (§7.8) | `docker rm -f todo-api && docker compose up -d` | 6 s |
+| Retour arrière (§6) | `TAG=<sha> docker compose up -d` | 8 s |
+
+### Trois défauts trouvés par le test, invisibles à la relecture
+
+**1. Toutes les commandes `docker compose` de la procédure échouaient.** `compose.yml` exige la
+variable `TAG`, qu'aucune commande de dépannage ne fournissait :
+
+```
+error while interpolating services.todo-api.image: required variable TAG is missing a value
+```
+
+Quatre sections étaient inapplicables. Corrigé à la racine plutôt que dans le texte : le job de
+déploiement inscrit désormais `TAG=<sha>` dans `/srv/todo/.env`. La machine cible se souvient de
+sa version, et `docker compose up -d` suffit pendant un incident.
+
+**2. Un conteneur relancé hors de Compose ne peut pas être repris par `--force-recreate`.**
+Compose n'en est pas propriétaire et échoue sur `Conflict. The container name "/todo-api" is
+already in use`. Il faut le supprimer d'abord.
+
+**3. L'API n'écoute qu'après ~40 s si la base est absente au démarrage** — elle réessaie dix fois
+avant d'ouvrir son port. Sans cette information, l'absence de réponse pendant 30 s se lit comme un
+second incident et déclenche un dépannage inutile.
+
+### Erreur volontaire, détectée par le point de contrôle
+
+Test : coller le sha **court** au lieu du sha complet dans la commande de retour arrière — l'erreur
+la plus probable, puisque c'est ce qu'affiche `git log --oneline`.
+
+```
+Error response from daemon: manifest for ovbd/todo-api:2a2496f not found: manifest unknown
+```
+
+Code de retour **1**, message explicite, et la production est restée debout. Le point de
+vérification de l'étape suivante l'attrape exactement comme annoncé.
+
+### Signatures affinées
+
+Deux pannes donnent un 500 sur `/api/tasks` et se distinguent au chronomètre :
+
+| | Base arrêtée | Conteneur relancé sans configuration |
+|---|---|---|
+| `/api/tasks` répond en | **~5 s** | **~12 ms** |
+| `todo-db` | `Exited` | **`Up (healthy)`** |
