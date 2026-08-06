@@ -266,12 +266,16 @@ le nouvel identifiant.
 
 Lisez ce tableau **de gauche à droite** : `up` d'abord, il sépare les pannes en deux familles.
 
-| `up` | `/health` | `/api/tasks` | Diagnostic | Aller à |
-|---|---|---|---|---|
-| **0** | pas de réponse | pas de réponse | l'API est arrêtée ou plantée | [§7.4](#74-lapi-est-arrêtée-ou-en-boucle-de-crash) |
-| **1** | 200 | **500 après ~5 s** | la base est injoignable | [§7.5](#75-la-base-est-injoignable) |
-| **1** | 200 | 200 mais très lent | la machine est saturée | [§7.6](#76-la-machine-est-saturée) |
-| **1** | 200 | 200 | l'API va bien — cherchez ailleurs | — |
+| `up` | `/health` | `/api/tasks` | Conteneur `todo-api` | Diagnostic | Aller à |
+|---|---|---|---|---|---|
+| **0** | pas de réponse | pas de réponse | `Exited` / `Restarting` | l'API est arrêtée ou plante | [§7.4](#74-lapi-est-arrêtée-ou-en-boucle-de-crash) |
+| **0** | pas de réponse | pas de réponse | **`Up`** | l'API tourne mais est coupée du réseau | [§7.9](#79-lapi-est-coupée-du-réseau) |
+| **1** | 200 | **500 après ~5 s** | `Up` | la base est injoignable | [§7.5](#75-la-base-est-injoignable) |
+| **1** | 200 | **500 en ~12 ms** | `Up` | relancée sans sa configuration | [§7.7](#77-lapi-tourne-mais-sans-sa-configuration) |
+| **1** | 200 | 200 | `Up` | l'API va bien — vérifiez quand même [§7.6](#76-la-machine-est-saturée) | — |
+
+**Les deux premières lignes se confondent sur le tableau de bord** : `up = 0` et rien ne répond,
+dans les deux cas. Seul `docker ps -a` les sépare. Regardez-le systématiquement avant de conclure.
 
 Repère chiffré : **au repos le trafic est de 0,2 req/s** (les collectes de Prometheus) et le
 **p95 est sous 25 ms**. Un p95 à 5 secondes signe une base injoignable.
@@ -319,6 +323,9 @@ publication.
 vm 'docker ps -a --format "{{.Names}}\t{{.Status}}" | grep todo-api'
 ```
 
+**Cette commande décide de tout.** Si le statut est `Up` alors que rien ne répond, ce n'est pas
+cette section : allez au [§7.9](#79-lapi-est-coupée-du-réseau).
+
 - statut `Restarting` → l'application plante au démarrage. Lisez la cause :
   ```sh
   vm 'docker logs --tail 30 todo-api'
@@ -349,10 +356,18 @@ vm 'cd /srv/todo && docker compose up -d todo-db'
 
 ### 7.6 La machine est saturée
 
-**Signature :** `up = 1`, tout répond mais lentement, le p95 monte sans que le trafic augmente,
-et le panneau **Ressources** montre le CPU au plafond.
+**Signature :** `up = 1`, tout répond, et **le tableau de bord semble normal**. C'est la panne la
+plus difficile à voir depuis Grafana.
+
+Mesuré sur cette machine (8 cœurs, 4 conteneurs parasites à 99 % de CPU chacun) : l'API répond
+toujours, le p95 passe seulement de **8 ms à 37 ms**. Ne comptez pas sur la latence pour vous
+alerter — le vrai signal est la **présence de conteneurs qui ne devraient pas être là**.
+
+La stack complète compte exactement **quatre** conteneurs : `todo-api`, `todo-db`, `prometheus`,
+`grafana`. Tout autre nom est suspect.
 
 ```sh
+vm 'docker ps --format "{{.Names}}"'
 vm 'docker stats --no-stream --format "{{.Name}}\t{{.CPUPerc}}"'
 ```
 
@@ -411,6 +426,28 @@ vm 'docker rm -f todo-api && cd /srv/todo && docker compose up -d'
 
 Si le port est occupé par un processus **hors Docker**, le conflit vient de l'hôte : identifiez-le
 avec `ss -ltnp | grep 3000` sur le PC (et non sur la machine cible).
+
+### 7.9 L'API est coupée du réseau
+
+**Signature :** identique au [§7.4](#74-lapi-est-arrêtée-ou-en-boucle-de-crash) vue du tableau de
+bord — `up = 0`, rien ne répond — **sauf que le conteneur est `Up`**. Il tourne, il n'a simplement
+plus d'interface réseau, donc ni Prometheus ni les ports publiés ne l'atteignent.
+
+```sh
+vm 'docker inspect -f "{{range \$k,\$v := .NetworkSettings.Networks}}{{\$k}} {{end}}" todo-api'
+```
+
+**Vérification :** la commande affiche `todo_default`. **Si elle n'affiche rien, c'est ce cas-ci**
+— le conteneur n'est rattaché à aucun réseau.
+
+```sh
+vm 'docker network connect todo_default todo-api'
+```
+
+**Vérification :** `curl -s http://localhost:3000/health` répond `ok`, et `up` repasse à 1 sur le
+tableau de bord en moins de 15 s.
+
+Ne recréez pas le conteneur : reconnecter suffit et prend une seconde.
 
 ---
 

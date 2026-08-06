@@ -216,3 +216,51 @@ Deux pannes donnent un 500 sur `/api/tasks` et se distinguent au chronomètre :
 |---|---|---|
 | `/api/tasks` répond en | **~5 s** | **~12 ms** |
 | `todo-db` | `Exited` | **`Up (healthy)`** |
+
+---
+
+## Phase 10 — Préparation de la passation
+
+`scripts/incident.sh` est en place et a été **exécuté à blanc** sur la machine cible pour vérifier
+qu'il fonctionne : tirage silencieux, panne appliquée, réponse consignée dans `/root/.incident`.
+
+Deux préparatifs sans lesquels la passation aurait mal commencé :
+
+- `od -An -N1 -tu1 /dev/urandom` fonctionne bien avec le busybox de l'image `dind` (vérifié :
+  tirages variés sur 6 essais)
+- l'image `alpine` était **absente** de la machine cible. Sans pré-téléchargement, l'incident 5
+  aurait dépendu du réseau au pire moment. Elle est maintenant en cache.
+
+### Les 5 incidents, éprouvés un par un
+
+| # | Panne | `up` | `/health` | `/api/tasks` | Conteneur | Couvert par |
+|---|---|---|---|---|---|---|
+| 1 | API arrêtée | 0 | — | — | `Exited` | §7.4 |
+| 2 | Base arrêtée | 1 | 200 | 500 en ~5 s | `Up` | §7.5 |
+| 3 | API coupée du réseau | **0** | — | — | **`Up`** | **§7.9** |
+| 4 | Relancée sans configuration | 1 | 200 | 500 en ~12 ms | `Up` | §7.7 |
+| 5 | Machine saturée | 1 | 200 | 200 | `Up` + 4 intrus | §7.6 |
+
+### Deux corrections que ces tests ont imposées
+
+**Les incidents 1 et 3 sont indiscernables sur le tableau de bord.** Les deux donnent `up = 0` et
+un silence total. Le seul discriminant est `docker ps -a` : conteneur `Exited` dans un cas, `Up`
+dans l'autre. La procédure ne couvrait pas le cas 3 — une section §7.9 a été ajoutée, et le §7.4
+renvoie désormais vers elle explicitement. Remède : `docker network connect todo_default todo-api`,
+une seconde, sans recréer le conteneur.
+
+**L'incident 5 ne ralentit presque pas l'API.** J'avais écrit « tout répond mais lentement ».
+Mesure réelle sur 8 cœurs avec 4 conteneurs parasites à 99 % : le p95 passe de **8 ms à 37 ms** et
+l'API répond normalement. Le tableau de bord reste au vert. Le vrai signal n'est pas la latence
+mais la **présence de conteneurs qui ne devraient pas exister** — la stack en compte exactement
+quatre. La section §7.6 a été réécrite en conséquence.
+
+C'est la panne la plus difficile à voir depuis Grafana, et je ne l'aurais pas su en me contentant
+de raisonner.
+
+### Reste à faire, le jour de la passation
+
+- lancer `incident.sh` sur sa propre machine, sans regarder
+- jouer les deux rôles avec un binôme (les mains / le pilote), chronomètre en main
+- consigner ici les **deux entrées** : temps de rétablissement, panneau le plus utile, ligne
+  manquante de la procédure
