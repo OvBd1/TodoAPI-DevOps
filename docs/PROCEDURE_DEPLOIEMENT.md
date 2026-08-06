@@ -520,14 +520,22 @@ coupe le service pour tout le monde. Elle survient quand une clé disparaît du 
 `Secret` : le pod démarre sans elle, l'application se rabat sur une valeur par défaut, et la base
 refuse la connexion.
 
-La cause n'est visible que dans les logs applicatifs :
+**Avant la signature ci-dessus, vous verrez peut-être l'état transitoire** : un pod `0/1 Running`
+avec `RESTARTS` à `0` et un nom dont le hash du milieu diffère des autres, pendant que
+`/api/tasks` répond encore `200`. Ce n'est pas une panne différente, c'est le rolling update qui
+propage la configuration cassée. Attendez la fin de `kubectl rollout status` : le 500 arrive
+quand le dernier ancien pod part.
+
+La cause n'est visible que dans les logs applicatifs, et il faut la chercher : elle est écrite
+au démarrage, pas dans les dernières lignes.
 
 ```sh
-kubectl logs -n todo -l app=todo-api --tail=5
+kubectl logs -n todo -l app=todo-api --tail=100 | grep -iE "authentication|migration"
 ```
 
 **Vérification :** une ligne du type `migration : tentative 3/10 echouee (password authentication
-failed for user "todo")`. Elle nomme la variable en cause.
+failed for user "todo")`. Elle nomme la variable en cause. Un `--tail` court ne montre que
+`migration impossible : l'API demarre sans schema`, qui dit qu'il y a un problème sans dire lequel.
 
 Comparez ce que le pod a reçu avec ce que le dépôt déclare :
 
