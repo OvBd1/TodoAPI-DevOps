@@ -7,6 +7,11 @@ metadata:
     app: todo-api
 spec:
   replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: todo-api
@@ -25,6 +30,12 @@ spec:
                 name: todo-config
             - secretRef:
                 name: todo-secret
+          lifecycle:
+            preStop:
+              # Le pod continue de repondre pendant que Traefik le retire de ses
+              # endpoints. Sans ce delai, deux requetes tombent a chaque rollout.
+              exec:
+                command: ["sleep", "5"]
           readinessProbe:
             httpGet:
               path: /health
