@@ -30,6 +30,13 @@ spec:
                 name: todo-config
             - secretRef:
                 name: todo-secret
+          resources:
+            requests:
+              cpu: 50m
+              memory: 48Mi
+            limits:
+              cpu: 500m
+              memory: 64Mi
           lifecycle:
             preStop:
               # Le pod continue de repondre pendant que Traefik le retire de ses
