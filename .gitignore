@@ -5,3 +5,13 @@ deploy_key
 
 # Mots de passe de la stack de prod (voir .env.example).
 .env
+
+# Le Secret du cluster porte le mot de passe de la base (voir todo-secret.example.yaml).
+k8s/todo-secret.yaml
+
+# La reponse du tirage de chaos.sh, a lire seulement au debriefing.
+.incident
+
+# Le kubeconfig de todo-cluster : le versionner donnerait les pleins pouvoirs
+# sur le cluster a quiconque lit le depot.
+kubeconfig*
