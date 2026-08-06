@@ -92,72 +92,49 @@ jobs:
 
   deploy:
     needs: [build]
-    # Seul job à tourner chez moi : le runner GitHub est dans un datacenter et ne peut pas
-    # joindre la machine cible derrière ma box.
+    # Le runner et le cluster partagent la meme machine : ni cle SSH ni secret
+    # supplementaire, kubectl lit le kubeconfig que k3d a ecrit a la creation.
     runs-on: self-hosted
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    env:
+      NAMESPACE: todo
+      DEPLOIEMENT: todo-api
+      KUBECONFIG: /home/ybont/.kube/config
 
     steps:
       - uses: actions/checkout@v4
 
-      # L'agent garde la clé en mémoire : rien n'est écrit sur le disque du runner.
-      - name: Charger la clé de déploiement dans l'agent SSH
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
-
-      - name: Vérifier que les secrets de déploiement sont présents
-        env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      - name: Vérifier que le runner parle au bon cluster
         run: |
-          manquants=""
-          [ -z "$DEPLOY_HOST" ] && manquants="$manquants DEPLOY_HOST"
-          [ -z "$DEPLOY_PORT" ] && manquants="$manquants DEPLOY_PORT"
-          [ -z "$DEPLOY_USER" ] && manquants="$manquants DEPLOY_USER"
-          if [ -n "$manquants" ]; then
-            echo "::error::Secret(s) absent(s) ou mal orthographie(s) :$manquants — verifier Settings > Secrets and variables > Actions"
-            exit 1
-          fi
-          echo "les trois secrets de connexion sont renseignes"
-
-      - name: Faire confiance à la machine cible
-        run: |
-          mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          ssh-keyscan -p "${{ secrets.DEPLOY_PORT }}" -H "${{ secrets.DEPLOY_HOST }}" \
-            >> ~/.ssh/known_hosts
-
-      - name: Envoyer la configuration sur la machine cible
-        run: |
-          ssh -p "${{ secrets.DEPLOY_PORT }}" \
-            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" 'mkdir -p /srv/todo'
-          scp -P "${{ secrets.DEPLOY_PORT }}" -r compose.yml prometheus.yml grafana \
-            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/srv/todo/"
+          kubectl config use-context k3d-todo-cluster
+          kubectl get namespace "$NAMESPACE"
 
       - name: Déployer la version de ce commit
         run: |
-          # TAG est inscrit dans .env : sans ca, toute commande docker compose passee a la main
-          # sur la machine cible echoue faute de version, y compris pendant un incident.
-          ssh -p "${{ secrets.DEPLOY_PORT }}" \
-            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-            "cd /srv/todo \
-             && touch .env \
-             && sed -i '/^TAG=/d' .env \
-             && echo 'TAG=${{ github.sha }}' >> .env \
-             && docker compose up -d --remove-orphans"
+          kubectl set image "deployment/$DEPLOIEMENT" \
+            "$DEPLOIEMENT=${{ secrets.DOCKERHUB_USERNAME }}/todo-api:${{ github.sha }}" \
+            -n "$NAMESPACE"
 
-      - name: Vérifier que l'API répond
+      - name: Attendre la convergence du rollout
         run: |
-          for i in $(seq 1 30); do
-            if curl -fsS "http://${{ secrets.DEPLOY_HOST }}:3000/health"; then
+          if ! kubectl rollout status "deployment/$DEPLOIEMENT" -n "$NAMESPACE" --timeout=120s; then
+            echo "::error::Le rollout n'a pas converge en 120 s"
+            kubectl get pods -n "$NAMESPACE" -l app="$DEPLOIEMENT"
+            kubectl describe deployment "$DEPLOIEMENT" -n "$NAMESPACE" | tail -20
+            kubectl logs -n "$NAMESPACE" -l app="$DEPLOIEMENT" --tail=30 --previous || true
+            exit 1
+          fi
+
+      - name: Vérifier que l'API répond par sa vraie porte d'entrée
+        run: |
+          for i in $(seq 1 15); do
+            if curl -fsS -H "Host: todo.localhost" http://localhost:8080/health; then
               echo "" && echo "API en ligne apres ${i} tentative(s)"
               exit 0
             fi
             sleep 2
           done
-          echo "L'API ne repond pas sur /health apres 60 s"
-          ssh -p "${{ secrets.DEPLOY_PORT }}" \
-            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-            'docker compose -f /srv/todo/compose.yml ps; docker logs --tail 30 todo-api'
+          echo "::error::L'API ne repond pas sur /health via l'Ingress apres 30 s"
+          kubectl get ingress,svc,endpoints -n "$NAMESPACE"
           exit 1

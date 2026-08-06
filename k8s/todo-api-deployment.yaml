@@ -17,12 +17,9 @@ spec:
     spec:
       containers:
         - name: todo-api
-          # Le sha du commit, jamais latest : c'est ce qui rend le retour arrière possible.
           image: ovbd/todo-api:aab934acd7d9a1282d80509cd43199292350817b
           ports:
             - containerPort: 3000
-          # envFrom déverse toutes les clés des deux objets d'un coup : l'API attend
-          # déjà DB_HOST, DB_USER, DB_PASSWORD sous ces noms depuis le Jour 1.
           envFrom:
             - configMapRef:
                 name: todo-config

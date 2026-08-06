@@ -14,6 +14,5 @@ spec:
             backend:
               service:
                 name: todo-api
-                # 80, le port du Service, jamais 3000 qui est celui du conteneur.
                 port:
                   number: 80

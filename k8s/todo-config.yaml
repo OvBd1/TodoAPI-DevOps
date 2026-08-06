@@ -4,8 +4,6 @@ metadata:
   name: todo-config
   namespace: todo
 data:
-  # DB_HOST n'est ni une IP ni localhost : c'est le nom du Service PostgreSQL,
-  # que le DNS interne du cluster résout vers les pods qui portent app: todo-db.
   DB_HOST: todo-db
   DB_PORT: "5432"
   NODE_ENV: production
