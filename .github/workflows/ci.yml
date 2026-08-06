@@ -137,9 +137,15 @@ jobs:
 
       - name: Déployer la version de ce commit
         run: |
+          # TAG est inscrit dans .env : sans ca, toute commande docker compose passee a la main
+          # sur la machine cible echoue faute de version, y compris pendant un incident.
           ssh -p "${{ secrets.DEPLOY_PORT }}" \
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-            "cd /srv/todo && TAG=${{ github.sha }} docker compose up -d --remove-orphans"
+            "cd /srv/todo \
+             && touch .env \
+             && sed -i '/^TAG=/d' .env \
+             && echo 'TAG=${{ github.sha }}' >> .env \
+             && docker compose up -d --remove-orphans"
 
       - name: Vérifier que l'API répond
         run: |
